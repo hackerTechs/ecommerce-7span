@@ -81,6 +81,22 @@ npm test
 
 ---
 
+## API documentation (Swagger)
+
+Interactive docs and the machine-readable spec are served by the **Express** app (not behind the `/api` prefix).
+
+| Resource | URL (local; use your `PORT` if not 5000) |
+| -------- | ---------------------------------------- |
+| **Swagger UI** | [http://localhost:5000/api-docs](http://localhost:5000/api-docs) |
+| **OpenAPI 3 JSON** | [http://localhost:5000/api-docs.json](http://localhost:5000/api-docs.json) |
+
+- **Implementation:** `swagger-ui-express`; the spec lives in `server/src/docs/openapi.ts` and is wired in `server/src/docs/swagger.ts` / `server/src/app.ts` (UI is registered **before** Helmet so Content-Security-Policy does not block the Swagger UI assets).
+- **Base path:** All REST routes in the spec use the **`/api`** server URL (e.g. `GET /api/products` in the browser becomes `http://localhost:5000/api/products`).
+- **Auth in “Try it out”:** The API uses **httpOnly cookies** (`access_token`, `refresh_token`). From Swagger UI on the **same origin** as the API, log in via `POST /api/auth/login` or `register`, then subsequent requests can include cookies automatically. Cross-origin clients must use `credentials: 'include'` (as the Vite app does for `/api`).
+- **Rate limiting:** The global limiter applies to **`/api/*` only** (see below). `/api-docs` and `/api-docs.json` are **not** counted against that quota.
+
+---
+
 ## Environment variables (summary)
 
 
@@ -106,6 +122,7 @@ See `**.env.example**` at the repo root for a full list.
 - **Cart:** One cart per user; line items reference `productId` + quantity.
 - **Real-time stock:** Socket.IO broadcasts `stock:update` after order place/cancel so UIs can refresh without polling.
 - **Catalog cache (Redis):** List/detail/category responses cached with a **bust epoch** on product/order mutations; safe to run without Redis (falls back to DB).
+- **Rate limiting:** One **IP-based** limiter on all `/api` routes (`300` requests per **15 minutes**; see `server/src/middleware/rate-limit.middleware.ts`).
 
 ---
 
@@ -226,3 +243,16 @@ Order placement does several things that must succeed or fail **together**:
 **Also:** unique constraints (`email`, `cart.user_id`, `cart_items(cart_id, product_id)`) and primary keys already define indexes.
 
 **Note:** `LIKE '%term%'` / `contains` cannot use a B-tree index well; **FULLTEXT** + `search` is used for product name (and admin user search) when the query is long enough; very short queries still use `contains` as a fallback.
+
+---
+
+## Future improvements
+
+- **API spec:** Keep `openapi.ts` aligned with routes (or generate types/validators from OpenAPI to avoid drift).
+- **Payments & notifications:** Integrate a payment provider, order confirmation emails, and shipment status updates.
+- **Security:** Add stronger protection on auth (e.g. dedicated login/register limits, account lockout, CAPTCHA) where the global `api` rate limit is not enough; optional IP allowlists for admin.
+- **Observability:** Structured logging, request IDs, metrics (Prometheus/OpenTelemetry), and alerting for production.
+- **Testing:** Broader integration/E2E coverage, contract tests against the OpenAPI spec, and load tests for checkout under contention.
+- **Product & media:** Image upload/storage (S3 or similar) instead of URL-only; inventory reservations or pessimistic locking for high-concurrency SKUs.
+- **Ops:** Redis-backed rate limiting (or shared store) for multi-instance deployments; database read replicas; health/readiness endpoints for orchestration.
+- **UX & admin:** Richer admin tooling (audit logs, exports), search/filter improvements, and internationalization if the scope grows beyond INR.
