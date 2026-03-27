@@ -1,0 +1,76 @@
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: ecommerce-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-ecommerce}
+      MYSQL_USER: ${MYSQL_USER:-ecommerce_user}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-ecommerce_pass}
+    ports:
+      - "${MYSQL_PORT:-3306}:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: ecommerce-redis
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    container_name: ecommerce-server
+    restart: unless-stopped
+    ports:
+      - "${SERVER_PORT:-5000}:5000"
+    environment:
+      DATABASE_URL: mysql://${MYSQL_USER:-ecommerce_user}:${MYSQL_PASSWORD:-ecommerce_pass}@mysql:3306/${MYSQL_DATABASE:-ecommerce}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:-}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-}
+      JWT_ACCESS_EXPIRES_IN: ${JWT_ACCESS_EXPIRES_IN:-15m}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN:-7d}
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:3000}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379}
+      PORT: 5000
+      NODE_ENV: ${NODE_ENV:-development}
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: http://localhost:${SERVER_PORT:-5000}/api
+    container_name: ecommerce-client
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_PORT:-3000}:3000"
+    depends_on:
+      - server
+
+volumes:
+  mysql_data:
+  redis_data:
