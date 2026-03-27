@@ -4,6 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import { config } from "./config";
 import { errorHandler } from "./middleware/error.middleware";
+import { apiRateLimiter } from "./middleware/rate-limit.middleware";
 import { router } from "./routes";
 import { setupSwagger } from "./docs/swagger";
 
@@ -22,7 +23,7 @@ app.use(cookieParser());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-app.use("/api", router);
+app.use("/api", apiRateLimiter, router);
 
 app.use(errorHandler);
 
